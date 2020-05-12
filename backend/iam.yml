@@ -1,0 +1,155 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description:
+  IAM permissions for deploying the Eurosight backend
+
+Parameters:
+  ServerlessServiceName:
+    Type: String
+    Default: eurosight
+    Description: Enter the service name from serverless.yml.  Must be lowercase.
+    AllowedPattern: "^[a-z]+$"
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Target Route53 zone id.
+
+Resources:
+  ServerlessCloudformationPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy for Cloudformation Serverless deployments
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:PassRole
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ServerlessServiceName}*"
+          - Effect: Allow
+            Action:
+              - apigateway:POST
+            Resource:
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/apis"
+          - Effect: Allow
+            Action:
+              - apigateway:DELETE
+              - apigateway:GET
+              - apigateway:PATCH
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:UpdateRestApiPolicy
+            Resource:
+             - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/*"
+             - !Sub "arn:aws:apigateway:${AWS::Region}::/apis/*"
+          - Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:ListTagsOfResource
+              - dynamodb:TagResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ServerlessServiceName}*"
+          - Effect: Allow
+            Action:
+              - lambda:*
+            Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServerlessServiceName}*"
+          - Effect: Allow
+            Action:
+              - logs:DescribeLogGroups
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group::log-stream:"
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:DescribeLogGroups
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ServerlessServiceName}*"
+          - Effect: Allow
+            Action:
+              - s3:*
+            Resource:
+              - !Sub "arn:aws:s3:::${ServerlessServiceName}*"
+              - !Sub "arn:aws:s3:::${ServerlessServiceName}*/*"
+          - Effect: Allow
+            Action:
+              - route53:ListHostedZones
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - route53:ChangeResourceRecordSets
+              - route53:ListResourceRecordSets
+            Resource: !Sub "arn:aws:route53:::hostedzone/${HostedZoneId}"
+          - Effect: Allow
+            Action:
+              - route53:GetChange
+            Resource: !Sub "arn:aws:route53:::change/*"
+  ServerlessCloudformationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ServerlessCloudformationPolicy
+  ServerlessDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy to start Serverless deployments
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !GetAtt ServerlessCloudformationRole.Arn
+          - Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:ValidateTemplate
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:ListStackResources
+            Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ServerlessServiceName}*"
+          - Effect: Allow
+            Action:
+              - apigateway:GET
+            Resource:
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/*"
+          - Effect: Allow
+            Action:
+              - apigateway:PATCH
+            Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/*/stages/*"
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub "arn:aws:s3:::${ServerlessServiceName}*"
+              - !Sub "arn:aws:s3:::${ServerlessServiceName}*/*"
+Outputs:
+  CloudformationDeploymentRoleOutput:
+    Value: !GetAtt ServerlessCloudformationRole.Arn
+    Export:
+      Name: !Sub "${ServerlessServiceName}CloudformationRole"
