@@ -52,10 +52,10 @@ functions:
   processChange:
     handler: index.processChange
     events:
-      - type: dynamodb
-        arn:
-          Fn::GetAtt: [EurosightTable, StreamArn]
-
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [EurosightTable, StreamArn]
 
 resources:
   Resources:

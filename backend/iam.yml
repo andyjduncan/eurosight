@@ -59,6 +59,12 @@ Resources:
             Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ServerlessServiceName}*"
           - Effect: Allow
             Action:
+              - lambda:CreateEventSourceMapping
+              - lambda:GetEventSourceMapping
+              - lambda:DeleteEventSourceMapping
+            Resource: "*"
+          - Effect: Allow
+            Action:
               - lambda:*
             Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServerlessServiceName}*"
           - Effect: Allow
