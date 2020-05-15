@@ -1,0 +1,40 @@
+<html>
+<head>
+    <title>Panel</title>
+</head>
+<body>
+<div id="main" class="main"></div>
+<script src="terry.js"></script>
+<script>
+    (function() {
+        const app = Elm.Terry.init({node: document.getElementById('main')});
+
+        app.ports.loadState.subscribe(() => {
+            const state = localStorage.getItem('terry-state');
+
+            app.ports.onLoadState.send(state);
+        });
+
+        app.ports.saveState.subscribe((state) => {
+            localStorage.setItem('terry-state', state);
+        });
+
+        app.ports.listen.subscribe((url) => {
+            const socket = new WebSocket(url);
+
+            socket.onopen =  (event) => {
+                app.ports.connect.send('ok');
+            };
+
+            socket.onmessage = (event) => {
+                app.ports.receive.send(event.data);
+            };
+
+            app.ports.sendMessage.subscribe(message => {
+                socket.send(message)
+            });
+        });
+    })();
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@
   "devDependencies": {
     "serverless": "^1.70.1",
     "serverless-iam-roles-per-function": "^2.0.2",
+    "serverless-pseudo-parameters": "^2.5.0",
     "wscat": "^4.0.0"
   },
   "dependencies": {

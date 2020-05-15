@@ -1,5 +1,6 @@
 plugins:
   - serverless-iam-roles-per-function
+  - serverless-pseudo-parameters
 
 service:
   name: eurosight
@@ -11,19 +12,21 @@ provider:
   region: ${opt:region, 'eu-west-1'}
   cfnRole: ${cf:${self:service}-iam.CloudformationDeploymentRoleOutput}
   websocketsApiRouteSelectionExpression: $request.body.action
+  environment:
+    TABLE_NAME: !Ref EurosightTable
 
 functions:
   connect:
     handler: index.connect
     events:
-      - websocket: $connect
+      - websocket:
+          route: $connect
+          routeResponseSelectionExpression: $default
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:UpdateItem
+          - dynamodb:PutItem
         Resource: !GetAtt EurosightTable.Arn
-    environment:
-      TABLE_NAME: !Ref EurosightTable
 
   disconnect:
     handler: index.disconnect
@@ -32,10 +35,22 @@ functions:
     iamRoleStatements:
       - Effect: Allow
         Action:
+          - dynamodb:DeleteItem
           - dynamodb:UpdateItem
         Resource: !GetAtt EurosightTable.Arn
-    environment:
-      TABLE_NAME: !Ref EurosightTable
+
+  init:
+    handler: index.init
+    events:
+      - websocket:
+          route: init
+          routeResponseSelectionExpression: $default
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt EurosightTable.Arn
 
   vote:
     handler: index.vote
@@ -44,10 +59,19 @@ functions:
     iamRoleStatements:
       - Effect: Allow
         Action:
+          - dynamodb:Query
           - dynamodb:UpdateItem
         Resource: !GetAtt EurosightTable.Arn
-    environment:
-      TABLE_NAME: !Ref EurosightTable
+
+  countryPerformance:
+    handler: index.countryPerformance
+    events:
+      - websocket: countryPerformance
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: !GetAtt EurosightTable.Arn
 
   processChange:
     handler: index.processChange
@@ -56,6 +80,21 @@ functions:
           type: dynamodb
           arn:
             Fn::GetAtt: [EurosightTable, StreamArn]
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+          - dynamodb:DeleteItem
+          - dynamodb:Query
+        Resource: !GetAtt EurosightTable.Arn
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource: !Sub "arn:aws:execute-api:#{AWS::Region}:#{AWS::AccountId}:#{WebsocketsApi}/${self:provider.stage}/*"
+    environment:
+      ENDPOINT_URL: !Sub "https://#{WebsocketsApi}.execute-api.#{AWS::Region}.amazonaws.com/${self:provider.stage}"
 
 resources:
   Resources:
@@ -63,15 +102,15 @@ resources:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-          - AttributeName: Event
-            AttributeType: S
           - AttributeName: Type
+            AttributeType: S
+          - AttributeName: Key
             AttributeType: S
         BillingMode: PAY_PER_REQUEST
         KeySchema:
-          - AttributeName: Event
-            KeyType: HASH
           - AttributeName: Type
+            KeyType: HASH
+          - AttributeName: Key
             KeyType: RANGE
         StreamSpecification:
-          StreamViewType: NEW_IMAGE
+          StreamViewType: NEW_AND_OLD_IMAGES
