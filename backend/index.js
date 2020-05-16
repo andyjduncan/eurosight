@@ -25,6 +25,10 @@ const countries = {
     uk: 'United Kingdom'
 };
 
+const performingCountries = [
+
+];
+
 const AWS = require('aws-sdk');
 
 const tableName = process.env.TABLE_NAME;
@@ -321,14 +325,15 @@ const getPerformances = async () => {
         },
         ExpressionAttributeValues: {
             ':type': 'performance',
-        }
+        },
+        ScanIndexForward: false
     };
     const performancesResponse = await dynamo.query(params).promise();
     return performancesResponse.Items.map((p) => p.Country);
 };
 
 const countryInit = async (country) => {
-    let connectionId = country.ConnectionId;
+    const connectionId = country.ConnectionId;
     await sendMessage(connectionId, {event: 'country', country: country.Key});
     await sendMessage(connectionId, {event: 'allCountries', countries});
     const performedCountries = await getPerformances();
