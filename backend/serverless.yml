@@ -46,8 +46,44 @@ functions:
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:GetItem
           - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt EurosightTable.Arn
+
+  refresh:
+    handler: index.refresh
+    events:
+      - websocket: refresh
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: !GetAtt EurosightTable.Arn
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource: !Sub "arn:aws:execute-api:#{AWS::Region}:#{AWS::AccountId}:#{WebsocketsApi}/${self:provider.stage}/*"
+    environment:
+      ENDPOINT_URL: !Sub "https://#{WebsocketsApi}.execute-api.#{AWS::Region}.amazonaws.com/${self:provider.stage}"
+
+  makeAdmin:
+    handler: index.makeAdmin
+    events:
+      - websocket: makeAdmin
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: !GetAtt EurosightTable.Arn
+
+  enableVoting:
+    handler: index.enableVoting
+    events:
+      - websocket: enableVoting
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
         Resource: !GetAtt EurosightTable.Arn
 
   vote:

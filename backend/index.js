@@ -1,32 +1,77 @@
 'use strict';
 
 const countries = {
+    ad: 'Andorra',
+    al: 'Albania',
+    am: 'Armenia',
     at: 'Austria',
+    au: 'Australia',
+    az: 'Azerbaijan',
+    ba: 'Bosnia And Herzegovina',
+    bg: 'Bulgaria',
     be: 'Belgium',
+    by: 'Belarus',
     ch: 'Switzerland',
+    cy: 'Cyprus',
     cz: 'Czech Republic',
     de: 'Germany',
     dk: 'Denmark',
+    ee: 'Estonia',
     es: 'Spain',
     fi: 'Finland',
     fr: 'France',
+    ge: 'Georgia',
     gr: 'Greece',
+    hr: 'Croatia',
+    hu: 'Hungary',
     ie: 'Ireland',
+    il: 'Israel',
     is: 'Iceland',
     it: 'Italy',
+    lt: 'Lithuania',
     lu: 'Luxemburg',
+    lv: 'Latvia',
+    ma: 'Morocco',
+    mc: 'Monaco',
+    md: 'Moldova',
+    me: 'Montenegro',
+    mt: 'Malta',
+    mk: 'The Former Yugoslav Republic Of Macedonia',
     nl: 'Netherlands',
     no: 'Norway',
     pl: 'Poland',
+    pt: 'Portugal',
     ro: 'Romania',
+    rs: 'Serbia',
     ru: 'Russia',
     se: 'Sweden',
+    si: 'Slovenia',
+    sk: 'Slovakia',
+    sm: 'San Marino',
+    tr: 'Turkey',
     ua: 'Ukraine',
     uk: 'United Kingdom'
 };
 
 const performingCountries = [
-
+    'nl',
+    'de',
+    'es',
+    'cz',
+    'ch',
+    'dk',
+    'pl',
+    'it',
+    'ua',
+    'is',
+    'ro',
+    'se',
+    'gr',
+    'fi',
+    'uk',
+    'ru',
+    'no',
+    'ie'
 ];
 
 const AWS = require('aws-sdk');
@@ -100,9 +145,23 @@ const sendMessageToAll = async (message) => {
     return Promise.all(connections.Items.map((v) => sendMessage(v.Key, message)));
 };
 
-const connect = async (event) => {
-    console.log(JSON.stringify(event));
+const getAllCountries = async () => {
+    const params = {
+        TableName: tableName,
+        KeyConditionExpression: '#type = :type',
+        ExpressionAttributeNames: {
+            '#type': 'Type',
+        },
+        ExpressionAttributeValues: {
+            ':type': 'country',
+        }
+    };
+    const countries = await dynamo.query(params).promise();
 
+    return countries.Items.map((c) => c.Key);
+};
+
+const connect = async (event) => {
     try {
         await addConnection(event.requestContext.connectionId);
         return {
@@ -117,8 +176,6 @@ const connect = async (event) => {
 };
 
 const disconnect = async (event) => {
-    console.log(JSON.stringify(event));
-
     try {
         await removeConnection(event.requestContext.connectionId);
         return {
@@ -133,8 +190,6 @@ const disconnect = async (event) => {
 };
 
 const init = async (event) => {
-    console.log(JSON.stringify(event));
-
     const message = JSON.parse(event.body);
 
     try {
@@ -149,6 +204,51 @@ const init = async (event) => {
         }
         return {
             statusCode: 200
+        };
+    } catch (err) {
+        console.log(err);
+        return {
+            statusCode: 502
+        }
+    }
+};
+
+const refresh = async (event) => {
+    try {
+        const country = await findCountry(event.requestContext.connectionId);
+        await countryInit(country);
+        return {
+            statusCode: 200
+        };
+    } catch (err) {
+        console.log(err);
+        return {
+            statusCode: 502
+        }
+    }
+};
+
+const makeAdmin = async (event) => {
+    const message = JSON.parse(event.body);
+
+    try {
+        const params = {
+            TableName: tableName,
+            Key: {
+                Type: 'country',
+                Key: message.country
+            },
+            UpdateExpression: `SET #admin = :isAdmin`,
+            ExpressionAttributeNames: {
+                '#admin': 'IsAdmin'
+            },
+            ExpressionAttributeValues: {
+                ':isAdmin': true
+            }
+        };
+        await dynamo.update(params).promise();
+        return {
+            statusCode: 202
         };
     } catch (err) {
         console.log(err);
@@ -189,13 +289,19 @@ const addCountry = async (connectionId) => {
 const updateCountry = async (country, connectionId) => {
     const params = {
         TableName: tableName,
-        Item: {
+        Key: {
             Type: 'country',
-            Key: country,
-            ConnectionId: connectionId
+            Key: country
+        },
+        UpdateExpression: `SET #connectionId = :connectionId`,
+        ExpressionAttributeNames: {
+            '#connectionId': 'ConnectionId'
+        },
+        ExpressionAttributeValues: {
+            ':connectionId': connectionId
         }
     };
-    return dynamo.put(params).promise();
+    return dynamo.update(params).promise();
 };
 
 const findCountry = async (connectionId) => {
@@ -223,11 +329,11 @@ const addScores = async (country, scores) => {
     const scoresByCountry = scores.reduce((acc, x) => ({...acc, ...x}), {});
     const operations = Object.entries(scoresByCountry)
         .reduce((acc, [k, v]) => ({
-                    ops: [`#${k} = :${k}Val`, ...acc.ops],
-                    names: {[`#${k}`]: `${k}`, ...acc.names},
-                    values: {
-                        [`:${k}Val`]: v, ...acc.values
-                    }
+                ops: [`#${k} = :${k}Val`, ...acc.ops],
+                names: {[`#${k}`]: `${k}`, ...acc.names},
+                values: {
+                    [`:${k}Val`]: v, ...acc.values
+                }
             }),
             {ops: [], names: {}, values: {}});
     const params = {
@@ -242,9 +348,37 @@ const addScores = async (country, scores) => {
     ).promise();
 };
 
-const vote = async (event) => {
-    console.log(JSON.stringify(event));
+const enableVoting = async (event) => {
+    const message = JSON.parse(event.body);
 
+    try {
+        const params = {
+            TableName: tableName,
+            Key: {
+                Type: 'country',
+                Key: message.country
+            },
+            UpdateExpression: `SET #votingEnabled = :isVotingEnabled`,
+            ExpressionAttributeNames: {
+                '#votingEnabled': 'IsVotingEnabled'
+            },
+            ExpressionAttributeValues: {
+                ':isVotingEnabled': true
+            }
+        };
+        await dynamo.update(params).promise();
+        return {
+            statusCode: 202
+        };
+    } catch (err) {
+        console.log(err);
+        return {
+            statusCode: 502
+        }
+    }
+};
+
+const vote = async (event) => {
     try {
         const country = await findCountry(event.requestContext.connectionId);
         const voteEvent = JSON.parse(event.body);
@@ -340,6 +474,20 @@ const countryInit = async (country) => {
     await sendMessage(connectionId, {event: 'performedCountries', countries: performedCountries});
     const scores = await currentScores();
     await sendMessage(connectionId, {event: 'scores', scores});
+    if (country.IsVotingEnabled) {
+        await sendMessage(connectionId, {event:'votingEnabled'})
+    }
+    if (country.IsAdmin) {
+        await adminInit(country);
+    }
+};
+
+const adminInit = async (country) => {
+    const connectionId = country.ConnectionId;
+    await sendMessage(connectionId, {event: 'madeAdmin'});
+    await sendMessage(connectionId, {event: 'performingCountries', countries: performingCountries});
+    const countries = await getAllCountries();
+    await sendMessage(connectionId, {event: 'votingPanels', countries})
 };
 
 const updatePerformances = async () => {
@@ -348,17 +496,22 @@ const updatePerformances = async () => {
 };
 
 const processChange = async (event) => {
-    console.log(JSON.stringify(event));
     try {
         await Promise.all(event.Records.map((e) => {
             const keys = AWS.DynamoDB.Converter.unmarshall(e.dynamodb.Keys);
             const newImage = AWS.DynamoDB.Converter.unmarshall(e.dynamodb.NewImage);
             switch (keys.Type) {
-                case "connection": return;
-                case "country": return countryInit(newImage);
-                case "scores": return updateScores();
-                case "performance": return updatePerformances();
-                default: return Promise.resolve();
+                case "connection":
+                    return;
+                case "country":
+                    return countryInit(newImage);
+                case "scores":
+                    return updateScores();
+                case "performance":
+                    return updatePerformances();
+
+                default:
+                    return Promise.resolve();
             }
         }));
     } catch (err) {
@@ -366,4 +519,4 @@ const processChange = async (event) => {
     }
 };
 
-module.exports = {connect, disconnect, init, vote, countryPerformance, processChange};
+module.exports = {connect, disconnect, init, refresh, makeAdmin, enableVoting, vote, countryPerformance, processChange};
